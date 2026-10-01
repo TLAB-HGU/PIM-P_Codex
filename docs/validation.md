@@ -8,6 +8,7 @@
 - Node 테스트 11개 통과: 실제 PPTX·한글 노트·출처 manifest·이미지 경로·차트 OOXML·출력 보호.
 - Codex skill-creator의 quick_validate.py와 저장소 validate_skill.py 통과.
 - git diff --check 통과.
+- GitHub Actions의 Ubuntu/Python 3.12/Node 22 실행도 [성공](https://github.com/prestige-kim/PIM-P_codex/actions/runs/36857492540)했다.
 
 합성 입력을 사용해 정상 출력만 아니라 다음 실패를 확인했다.
 노트/근거 누락, 범위를 벗어난 페이지·크롭, 없는 OCR 언어팩, 존재하지 않는 이미지,
@@ -41,6 +42,18 @@ deck.json, 12장 PPTX, source manifest, qa.json, 12페이지 렌더다.
 임의로 통일하지 않고 brief와 노트에 남겼다. Table 2의 test/newstest2014와
 Table 3의 dev/newstest2013를 구분하고, base 모델의 EN-FR 열세를 보존했다.
 이 독립 시험에서 수식 끝 글자 잘림을 발견해 구현과 회귀 테스트를 수정했다.
+
+## 실제 논문 easy 모드
+
+같은 논문을 비전공자 대상 10분, 총 12장으로 독립 제작했다. 기술 분석 §0–§12를 유지하고
+§13에 쉬운 논리 흐름·용어·비유와 그 한계·수식 직관·지표 해석을 추가했다.
+600초 발표 계획, 한국어 노트와 출처를 포함한 PPTX, manifest, QA와 렌더를 생성했다.
+
+구조 검사 오류·경고가 없었고, 12장 제목의 한글 텍스트 검사를 통과했다.
+개별 PNG 12장과 수정한 표 슬라이드를 확인해 잘림·겹침·한글 누락이 없음을 검토했다.
+Table 2/3 수치, EN-FR 표기 충돌, base 모델의 열세, test/dev 구분과 연구 한계를 유지했다.
+원본 Figure 대신 편집 가능한 도식으로 입력 표현·Attention·FFN·residual/LayerNorm·decoder를 설명하고,
+기술 세부 사항은 brief와 노트에 보존했다. 핵심 연산과 순차적인 실제 생성을 생략하지 않았다.
 
 ## 검증 범위
 

@@ -66,6 +66,7 @@ deck.json은 Codex가 검증한 brief와 slide_plan에서 작성한다. JSON 빌
 chartSlide의 highlightIndex는 단일 bar series의 제안 기법 막대 위치를 0부터 시작하는 인덱스로 강조한다.
 차트의 실제 숫자는 number로, 원문 표의 숫자는 원래 자릿수를 유지한 문자열로 쓴다.
 symbols.sym은 LaTeX 대신 유니코드 기호를 쓴다. points의 bullet은 문자열 또는 `{text, sub:[...]}`다.
+tableSlide.takeaway 문자열에는 수동 줄바꿈을 넣지 않는다. 줄바꿈은 별도 bullet로 해석되므로 문장 전체를 쓰고 자동 줄바꿈을 사용한다.
 
 직접 커스텀 레이아웃이 필요한 경우 deck_kit.js를 사용하는 build.js를 작성할 수 있다.
 이 경우에도 같은 manifest 스키마를 만들고 구조 검사·렌더·원문 검증을 수행한다.

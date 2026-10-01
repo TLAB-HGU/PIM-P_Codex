@@ -106,7 +106,7 @@ Designer는 검증된 brief를 내용 소스로 사용한다. 분석과 디자�
 
 ```bash
 "$PYTHON" "$SKILL_DIR/scripts/check_deck.py" "$WORK_DIR/deck.pptx" --manifest "$WORK_DIR/deck_manifest.json" --require-sources --report "$WORK_DIR/qa.json"
-"$PYTHON" "$SKILL_DIR/scripts/render_slides.py" "$WORK_DIR/deck.pptx" --outdir "$WORK_DIR/preview"
+"$PYTHON" "$SKILL_DIR/scripts/render_slides.py" "$WORK_DIR/deck.pptx" --output "$WORK_DIR/preview"
 ```
 
 렌더러의 실제 CLI 옵션은 `--help` 또는 qa.md를 확인한다. 한글 검증 옵션을 사용해 텍스트가 사라지는 문제를 잡는다.
