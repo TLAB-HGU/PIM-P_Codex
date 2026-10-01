@@ -1,118 +1,120 @@
 ---
 name: pimp
-description: 사용자가 준 논문(PDF)을 읽고, 논문의 흐름을 따라 이해하기 쉬운 "정석 논문 리뷰 세미나" 발표 자료(.pptx)를 만든다. Analyst(논문 이해·핵심 정리) → Designer(세미나 흐름으로 시각화·슬라이드 제작) 2단계 파이프라인. 두 가지 모드 — normal(기본, 같은 분야 연구자용)과 easy(비전공자도 알아듣는 쉬운 해석판) — 를 지원하며 `/pimp easy`, `/pimp normal`로 고른다. 논문 리뷰, 논문 발표, 랩미팅 논문 소개, 저널 클럽, paper review, journal club, 세미나 ppt, "이 논문 발표자료 만들어줘", "논문 슬라이드로 정리해줘"처럼 논문 파일과 함께 발표 자료·슬라이드·ppt를 요청하면 반드시 이 스킬을 사용할 것. 사용자가 '리뷰'나 '세미나'라는 단어를 쓰지 않고 논문을 첨부한 채 "발표 준비", "ppt로 만들어줘"라고만 해도 이 스킬을 쓴다. "쉽게", "비전공자용", "초보자도 이해하게" 같은 요청이 함께 오면 easy 모드로 만든다.
-argument-hint: "[easy|normal]"
+description: "사용자가 제공한 학술 논문 PDF 한 편을 근거가 연결된 한국어 논문 리뷰 세미나 PowerPoint와 발표자 노트로 만든다. 논문 발표·랩미팅·저널 클럽 슬라이드 요청에 사용하며 normal(연구자)과 easy(비전공자)를 지원한다. 논문 검색만 하거나 발표 자료 없이 논문을 요약하는 요청에는 사용하지 않는다."
+license: MIT
 ---
 
-# PIMP — Paper Review Slides
+# PIM-P for Codex
 
-사용자가 준 논문 한 편을 **정석 논문 리뷰 세미나 흐름**의 PowerPoint(.pptx)로 만든다.
+논문을 먼저 검증 가능한 분석 문서로 정리하고, 그 문서에서 슬라이드를 만든다.
+TLAB-HGU/PIM-P를 Codex용으로 이식했다. [UPSTREAM.md](UPSTREAM.md)와 [LICENSE](LICENSE)를 보존한다.
 
-## 모드 선택 (가장 먼저)
+## 입력과 기본값
 
-호출 인자: `$ARGUMENTS`
+- 입력은 사용자가 지정하거나 첨부한 **논문 한 편의 PDF**다. 실제 접근 가능한 파일 경로를 확인한다. 고정된 업로드 폴더를 가정하지 않는다. 입력이 없으면 논문을 요청한다.
+- `$pimp easy`, 비전공자·초보자·쉽게 요청은 easy, 나머지는 normal이다. 명시한 모드가 여러 개면 마지막 것을 따른다. 사용자 메시지에서 읽으며 Claude의 인자 치환에 의존하지 않는다.
+- 기본은 발표 30분, 한국어 본문과 노트, 16:9이다. 발표자·날짜는 제공된 것만 넣는다. 사용자가 지정한 시간·언어·분량·템플릿을 우선한다.
+- normal/easy 분량과 계산 기준은 [presentation-policy.json](references/presentation-policy.json)이 유일한 기준이다. 기본 30분 normal은 본문 18–24장을 목표로 하고, easy는 18–27장이다. 표지·목차·간지·참고문헌·Appendix는 본문에서 제외한다. 사용자가 총 장수를 지정하면 그 총수 안에 모든 장을 포함한다.
+- easy면 [easy-mode.md](references/easy-mode.md)를 읽는다. 사실과 근거는 normal과 같고 표현을 쉽게 바꾼다.
 
-위 인자(또는 인자가 전달되지 않는 환경이라면 사용자 메시지)를 보고 모드를 하나로 정한다.
+## 실행 준비와 작업 폴더
 
-| 조건 | 모드 |
-|---|---|
-| `easy`가 있음, 또는 "쉽게", "비전공자", "초보자", "일반인", "쉬운 버전" 같은 요청 | **easy** — 비전공자도 알아듣는 쉬운 해석판 |
-| `normal`이 있음, 인자가 비어 있음, 또는 위에 해당하지 않음 | **normal** — 기본. 같은 분야 대학원생/연구실용 |
+`SKILL_DIR`는 지금 읽은 SKILL.md의 실제 폴더다. `PYTHON`과 `NODE`는 사용 가능한 실행 파일이다.
+Codex 앱에서는 `load_workspace_dependencies`로 번들 경로를 확인한다. CLI에서는 프로젝트 가상환경과 설치된 Node를 사용한다.
+현재 환경 경로를 결과 코드에 하드코딩하지 않는다. 외부 API 키나 Claude 설치는 필요 없다.
 
-- 대소문자 무시(`EASY`, `Easy`도 easy). 둘 다 들어 있으면 뒤에 쓴 것을 따른다.
-- **easy 모드면 `references/easy-mode.md`를 반드시 읽는다.** 그 파일의 규칙이 이 문서와 analyst.md·designer.md·seminar-flow.md의 해당 부분을 **덮어쓴다**. 덮어쓰지 않은 부분(충실성, 출처 표기, 파이프라인, QA)은 그대로 적용된다.
-- 정한 모드는 Analyst·Designer 서브에이전트 프롬프트에 `MODE: easy` / `MODE: normal`로 명시해서 넘긴다. easy면 easy-mode.md도 함께 넘긴다.
-- 최종 답변 첫 줄에 어떤 모드로 만들었는지 밝힌다.
-
-## 파이프라인
-
-작업은 두 역할로 나뉜다.
-
-```
-논문 PDF ──▶ [0] 인벤토리(텍스트·페이지·Figure 위치)
-         ──▶ [A] Analyst  : 논문을 읽고 paper_brief.md 작성 (이해 담당)
-         ──▶ [B] Designer : brief만 보고 slide_plan.md → 에셋 → build.js → deck.pptx (시각화 담당)
-         ──▶ QA → 전달
-```
-
-**왜 둘로 나누는가.** 이해와 디자인을 한 번에 하면 슬라이드 모양에 맞추려고 내용을 왜곡하거나 수치를 지어내기 쉽다.
-Analyst는 "무엇이 맞는가"만, Designer는 "어떻게 보여줄까"만 책임진다. Designer는 논문 원문을 새로 해석하지 않고 검증된 brief를 시각화하므로,
-슬라이드의 모든 주장·수치가 brief(→ 논문 페이지)로 거슬러 올라갈 수 있다.
-
-## 시작 전에
-
-1. **먼저 읽을 것 (필수)**: `/mnt/skills/public/pptx/SKILL.md` — pptxgenjs 함정, 폰트, QA 절차가 여기 있다. 스캔본이거나 텍스트 추출이 이상하면 `/mnt/skills/public/pdf-reading/SKILL.md`도 읽는다.
-2. **논문 파일 확인**: `/mnt/user-data/uploads/`를 본다. 논문이 없으면 파일을 요청하고 멈춘다.
-3. **옵션**: 사용자가 말하지 않은 것은 묻지 말고 아래 기본값으로 진행하되, 최종 답변에 어떤 가정을 했는지 한 줄로 밝힌다.
-
-| 옵션 | 기본값 |
-|---|---|
-| 모드 | normal (위 "모드 선택" 참고) |
-| 발표 시간 | 30분 → 본문 18–24장 (분량 표는 `references/seminar-flow.md`). easy는 최대 27장 (`references/easy-mode.md`) |
-| 언어 | 한국어 본문, 전문 용어는 영어 병기 (예: 주의 메커니즘(Attention)). easy는 쉬운 우리말이 먼저, 원어는 작게 |
-| 청중 | normal: 같은 분야 대학원생/연구실 — 기초 개념은 짧게, 논문 고유 개념은 자세히. easy: 해당 분야 비전공자 |
-| 발표자·날짜 | 사용자가 주면 표지에 넣고, 없으면 그 줄을 생략 (placeholder 금지) |
-| 파일 형식 | .pptx (16:9, 13.33" × 7.5") |
-
-## 작업 폴더
-
-```
-/home/claude/review/
-├── inventory/          # [0] pdf_inventory.py 출력 (text/, pages/, inventory.json)
-├── paper_brief.md      # [A] Analyst 산출물 — Designer의 유일한 내용 소스
-├── slide_plan.md       # [B-1] 슬라이드별 설계
-├── assets/             # [B-2] 크롭한 Figure, 렌더링한 수식 PNG
-├── build.js            # [B-3] deck_kit.js를 쓰는 생성 스크립트
-└── deck.pptx
-```
-
-스킬 경로를 `SKILL_DIR`로 부른다 (이 SKILL.md가 있는 폴더).
-
-## [0] 논문 인벤토리
+먼저 [runtime.md](references/runtime.md)를 읽고 다음으로 의존성을 확인한다.
 
 ```bash
-python3 $SKILL_DIR/scripts/pdf_inventory.py /mnt/user-data/uploads/<paper>.pdf /home/claude/review/inventory
+"$PYTHON" "$SKILL_DIR/scripts/doctor.py" --strict
 ```
 
-페이지별 텍스트(`text/page_001.txt`, `full.txt`), 페이지 이미지(`pages/page-001.png`), 그리고 Figure/Table 캡션 위치와
-추천 크롭 영역(`inventory.json`)을 만든다. 텍스트가 거의 안 나오면 스캔본이다 → pdf-reading 스킬의 OCR 절차를 따른다.
+의존성이 없으면 runtime.md의 프로젝트 전용 가상환경과 `npm ci --prefix "$SKILL_DIR"` 절차를 따른다.
+스킬에 설치된 pptxgenjs와 환경의 Node를 연결한다. 수식 실패·한글 표시 실패를 성공으로 숨기지 않는다.
 
-## [A] Analyst — 논문 이해
+작업별 `WORK_DIR`를 사용자 작업 폴더 안에 만든다. 같은 논문을 수정할 때는 기존 작업을 이어가고, 다른 논문 파일을 덮어쓰지 않는다.
 
-`references/analyst.md`를 읽고 그대로 수행한다. 산출물은 `paper_brief.md` 하나이며, 그 파일의 스키마를 정확히 따른다.
-easy 모드면 easy-mode.md의 "Analyst 추가 작업"에 따라 brief 끝에 §13(쉬운 설명)을 더 쓴다.
+```text
+WORK_DIR/
+  inventory/           # full.txt, text/, pages/, inventory.json
+  paper_brief.md       # 원문 기반 분석
+  slide_plan.md        # 전체 발표 구성
+  assets/              # Figure·수식 PNG
+  deck.json            # 슬라이드 데이터와 근거
+  deck.pptx
+  deck_manifest.json   # 슬라이드별 근거와 노트
+  qa.json
+  preview/             # 렌더 PDF, PNG, montage
+```
 
-- **서브에이전트를 쓸 수 있는 환경**(Claude Code, Cowork)이면: analyst.md 전체를 프롬프트로 하는 서브에이전트를 띄우고, 입력으로 인벤토리 경로를, 출력 경로로 `paper_brief.md`를 준다.
-- **서브에이전트가 없는 환경**(Claude.ai)이면: 직접 수행하되, 이 단계에서는 슬라이드 모양을 생각하지 않는다. 오직 "논문이 무엇을 왜 어떻게 했고, 무엇을 보였나"에 집중한다.
+## 0. PDF 인벤토리
 
-**게이트**: analyst.md 끝의 자기 점검 체크리스트를 모두 통과해야 [B]로 넘어간다. 특히 모든 수치에 페이지/표 번호가 붙어 있어야 한다.
+```bash
+"$PYTHON" "$SKILL_DIR/scripts/pdf_inventory.py" "$PDF" "$WORK_DIR/inventory" --ocr auto --ocr-lang eng
+```
 
-## [B] Designer — 세미나 슬라이드 제작
+영문 논문은 eng, 한글 논문은 설치된 kor+eng 언어팩을 사용한다. 스캔·혼합 PDF는 페이지별 상태를 확인한다.
+OCR 언어팩이나 실행 파일이 없으면 설치 방법을 안내하고, 해당 페이지를 직접 읽거나 OCR을 준비한다.
+OCR 텍스트는 분석 보조 자료이며 수치·수식·표는 항상 원본 페이지 이미지를 대조한다.
+캡션·크롭 좌표는 **후보**다. 자동 감지 결과를 확정된 Figure 범위로 취급하지 않는다.
 
-`references/seminar-flow.md`(무엇을 어떤 순서로)와 `references/designer.md`(어떻게 보여줄지)를 읽고 수행한다.
-서브에이전트 환경이면 두 파일을 프롬프트로 하는 Designer 에이전트를 띄우고, 입력은 `paper_brief.md` + `inventory/` 경로만 준다.
-easy 모드면 `references/easy-mode.md`도 프롬프트에 넣는다 — 흐름·분량·글자 수 한도는 easy-mode.md가 우선한다.
+## A. Analyst
 
-Designer의 규칙: **내용은 brief에서만 가져온다.** brief에 없는 정보가 필요하면 brief가 가리키는 논문 페이지를 확인해 brief에 먼저 추가한 뒤 사용한다. 기억이나 추측으로 채우지 않는다.
+[analyst.md](references/analyst.md)의 스키마에 따라 `paper_brief.md`를 작성한다.
+텍스트만으로 표·수식을 해석하지 말고 페이지 이미지를 함께 읽는다. easy는 §13을 추가한다.
 
-1. **slide_plan.md** — 세미나 흐름에 따라 슬라이드마다 `섹션 / 아키타입 / 액션 타이틀 / 내용 / 시각 요소 / 발표자 노트 요지 / 출처(p.)`를 적는다. 먼저 전체 계획을 세우고 나서 만들기 시작한다 — 흐름 문제는 코드 쓰기 전에 고치는 게 훨씬 싸다.
-2. **에셋 준비**
-   - Figure 크롭: 페이지 이미지(`inventory/pages/`)를 직접 보고 `inventory.json`의 추천 영역을 확인·수정한 뒤
-     `python3 $SKILL_DIR/scripts/crop_figure.py <pdf> --page N --bbox x0 top x1 bottom -o assets/fig3.png`
-   - 수식: `python3 $SKILL_DIR/scripts/render_equation.py --batch equations.json --outdir assets/`
-3. **build.js** — `$SKILL_DIR/scripts/deck_kit.js`를 require해서 아키타입 함수로 슬라이드를 쌓는다. 사용법과 전체 예시는 designer.md에 있다. deck_kit에 없는 레이아웃이 꼭 필요하면 같은 테마 값(`kit.theme`)을 써서 직접 그린다.
-4. **빌드 & QA** — `node build.js` 후 pptx 스킬의 QA(내용·파일·시각)를 모두 수행하고, designer.md의 "세미나 품질 체크리스트"로 한 번 더 본다. 렌더 이미지를 실제로 열어 보고 넘침·겹침을 고친다.
+- 모든 수치·식·구체적 주장에 PDF 페이지와 Table/Figure/Eq 번호를 남긴다. PDF 페이지와 논문 인쇄 페이지가 다르면 구분한다.
+- 저자 주장, 관찰한 결과, 리뷰어 해석을 구분한다. 논문에 없는 배경 지식을 추가하면 교육용 설명으로 표시하고 검증 가능한 출처를 따로 남긴다.
+- 표의 열 순서·단위·지표 방향을 원문과 대조한다. 계산한 값은 계산식과 원문 입력을 기록한다.
+- brief 자기 점검을 통과한 뒤 디자인 단계로 넘어간다. 누락된 정보를 발견하면 먼저 brief를 수정한다.
 
-## 전달
+Analyst와 Designer를 순차적으로 직접 수행할 수 있다. 별도 에이전트를 쓸 수 있고 해당 실행에서 허용되면 역할을 분리하되,
+Designer는 검증된 brief를 내용 소스로 사용한다. 분석과 디자인을 동시에 진행해 불완전한 brief를 전달하지 않는다.
 
-1. `deck.pptx`를 `/mnt/user-data/outputs/<논문약칭>_review.pptx`(easy 모드는 `<논문약칭>_review_easy.pptx`)로 복사하고 `present_files`로 전달한다. (`paper_brief.md`도 함께 주면 발표 준비에 유용하다.)
-2. 답변은 짧게: 적용한 모드, 슬라이드 수와 구성(섹션별 장수), 적용한 가정(발표 시간 등), 그리고 **발표자가 직접 확인해야 할 부분** —
-   특히 "Critical Review / 토론 질문" 슬라이드는 발표자 본인의 의견으로 다듬어야 한다는 점.
+## B. Designer
 
-## 핵심 원칙 (모든 단계 공통)
+[seminar-flow.md](references/seminar-flow.md)와 [designer.md](references/designer.md)를 읽는다.
 
-- **충실성**: 수치·주장·수식은 논문에 있는 그대로. 슬라이드의 모든 수치는 노트에 출처(p., Table/Fig 번호)를 남긴다. 확신이 없으면 빼는 쪽을 택한다.
-- **논문의 목소리와 발표자의 목소리를 구분**: 논문이 주장한 한계는 "저자 언급", 리뷰어 관점의 비판은 "리뷰어 관점"으로 라벨을 붙인다.
-- **한 슬라이드 = 한 메시지**: 제목은 주제어("실험 결과")가 아니라 그 장의 결론을 말하는 액션 타이틀("TSMixer가 8개 중 6개 데이터셋에서 최저 MSE").
-- **이해 우선**: 수식은 반드시 기호 설명 + 직관적 해석과 함께, 복잡한 구조는 논문 Figure + 단계별 흐름으로 나눠 보여준다.
-- **발표자 노트**: 모든 슬라이드에 한국어 구어체 발표 스크립트(30–90초 분량)를 넣는다. 세미나 자료의 절반은 노트다.
+1. `slide_plan.md`에 섹션·아키타입·제목·메시지·시각 자료·노트·출처를 계획한다. 사용자 분량, 방법의 비중, 논리 연결을 확인한다.
+2. 원본 Figure를 눈으로 확인한 좌표로 자른다.
+
+```bash
+"$PYTHON" "$SKILL_DIR/scripts/crop_figure.py" "$PDF" --page 3 --bbox 50 80 560 330 -o "$WORK_DIR/assets/fig1.png"
+```
+
+3. brief의 수식을 렌더링한다. mathtext가 지원하지 않으면 [runtime.md](references/runtime.md)의 **원문 크롭 fallback**을 사용한다. 수식의 의미를 바꾸는 단순화는 하지 않는다.
+
+```bash
+"$PYTHON" "$SKILL_DIR/scripts/render_equation.py" --batch "$WORK_DIR/equations.json" --outdir "$WORK_DIR/assets"
+```
+
+4. [deck-format.md](references/deck-format.md)에 따라 `deck.json`을 작성한다. 모든 장에 실질적인 한국어 노트를 넣는다.
+내용 슬라이드에는 근거 목록을 넣고 리뷰어 해석은 `kind: reviewer`로 표시한다. 그림 경로는 deck.json 폴더 기준으로 쓴다.
+5. 빌드한다. 스크립트가 근거를 노트에 추가하고 manifest를 저장한다.
+
+```bash
+"$NODE" "$SKILL_DIR/scripts/build_deck.js" "$WORK_DIR/deck.json" --out "$WORK_DIR/deck.pptx"
+```
+
+논문 표·차트는 편집 가능한 native 객체를 사용한다. Figure·수식은 원본 의미를 보존하는 이미지다.
+폰트는 macOS Apple SD Gothic Neo, Windows Malgun Gothic, Linux Noto Sans CJK KR가 기본이며 사용자 지정이 우선한다.
+받는 PC의 폰트 설치와 대체 가능성을 확인한다. 미리보기 PDF도 함께 제공하면 표시를 확인하기 쉽다.
+
+## QA와 전달
+
+[qa.md](references/qa.md)를 읽고 구조 검사와 실제 렌더를 모두 수행한다.
+
+```bash
+"$PYTHON" "$SKILL_DIR/scripts/check_deck.py" "$WORK_DIR/deck.pptx" --manifest "$WORK_DIR/deck_manifest.json" --require-sources --report "$WORK_DIR/qa.json"
+"$PYTHON" "$SKILL_DIR/scripts/render_slides.py" "$WORK_DIR/deck.pptx" --outdir "$WORK_DIR/preview"
+```
+
+렌더러의 실제 CLI 옵션은 `--help` 또는 qa.md를 확인한다. 한글 검증 옵션을 사용해 텍스트가 사라지는 문제를 잡는다.
+한글 폰트 설정은 작업 폴더 안의 독립된 fontconfig·캐시로 처리하며 사용자 전역 설정을 수정하지 않는다.
+
+PNG를 실제로 열어 한글·표·수식·축 레이블·겹침·잘림을 확인한다. 구조 검사 통과는 사실 정확도나 시각 품질을 보장하지 않는다.
+원문과 brief, deck의 수치·방법·결론·한계를 대조한다. 수정 후 관련 검사와 렌더를 반복한다.
+렌더러가 없으면 생성된 PPTX와 미검증 항목을 구분해 전달하고 검증 완료라고 말하지 않는다.
+
+최종 답변에는 모드·슬라이드 수·발표 시간 가정, PPTX·brief·필요한 미리보기 파일 링크를 제공한다.
+Codex 파일 패널을 사용할 수 있으면 결과를 연다. Critical Review와 토론 질문은 발표자가 자신의 관점으로 다듬을 부분임을 알려준다.

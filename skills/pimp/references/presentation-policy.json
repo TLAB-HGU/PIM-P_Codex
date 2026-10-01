@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "default_minutes": 30,
+  "default_normal_target": [18, 24],
+  "body_excludes": ["titleSlide", "agendaSlide", "sectionSlide", "referencesSlide", "appendix"],
+  "ranges": [
+    {"minutes": [1, 15], "normal": [8, 12], "easy": [9, 15]},
+    {"minutes": [16, 39], "normal": [15, 24], "easy": [18, 27]},
+    {"minutes": [40, 120], "normal": [25, 35], "easy": [27, 38]}
+  ],
+  "appendix_max": 4,
+  "method_body_fraction": [0.3, 0.4],
+  "user_requested_total_takes_priority": true
+}

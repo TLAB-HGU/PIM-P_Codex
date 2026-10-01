@@ -4,7 +4,7 @@
  * 사용법:
  *   const kit = require('/path/to/deck_kit.js')({ theme: 'teal', short: 'TSMixer' });
  *   kit.titleSlide({...}); kit.tldrSlide({...}); ...
- *   await kit.save('/home/claude/review/deck.pptx');
+ *   await kit.save('/path/to/work/deck.pptx');
  *
  * 캔버스: LAYOUT_WIDE (13.333" x 7.5"). 모든 함수는 notes(발표자 노트)를 받는다.
  * pptxgenjs 함정 준수: '#' 없는 6자리 hex, 옵션 객체 공유 금지, isTextBox:true, margin:0.
@@ -63,8 +63,10 @@ module.exports = function createKit(opts = {}) {
   // 밝은 accent(노랑 계열)는 흰 배경 글자색으로 대비가 약하므로 강조 글자색은 primary로
   const lum = (hex) => { const n = parseInt(hex, 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
   T.bestText = lum(T.accent) > 0.6 ? T.primary : T.accent;
-  const FONT_HEAD = opts.fontHead || 'Malgun Gothic';
-  const FONT_BODY = opts.fontBody || 'Malgun Gothic';
+  const defaultFont = process.env.PIMP_FONT || (process.platform === 'darwin'
+    ? 'Apple SD Gothic Neo' : process.platform === 'win32' ? 'Malgun Gothic' : 'Noto Sans CJK KR');
+  const FONT_HEAD = opts.fontHead || defaultFont;
+  const FONT_BODY = opts.fontBody || defaultFont;
   const SHORT = opts.short || '';           // 푸터에 들어갈 논문 약칭
   const pres = new pptxgen();
   pres.layout = 'LAYOUT_WIDE';
@@ -384,13 +386,22 @@ module.exports = function createKit(opts = {}) {
    * 네이티브 막대/선 차트. labels: string[], series: [{name, values}]
    * highlightIndex: 제안 기법 막대 위치(단일 시리즈일 때 accent 대신 primary로 강조)
    */
-  function chartSlide({ eyebrow, title, type = 'bar', labels, series, valTitle, takeaway, note, numFmt = 'General', valMin, valMax, notes: n }) {
+  function chartSlide({ eyebrow, title, type = 'bar', labels, series, valTitle, takeaway, note, numFmt = 'General', valMin, valMax, highlightIndex, notes: n }) {
+    if (!['bar', 'line'].includes(type)) throw new Error('chart type must be bar or line');
+    if (!labels.length || !series.length || series.some(sr => sr.values.length !== labels.length || sr.values.some(v => !Number.isFinite(v)))) {
+      throw new Error('chart labels and finite numeric values must have matching lengths');
+    }
+    if (highlightIndex !== undefined && (type !== 'bar' || series.length !== 1 || !Number.isInteger(highlightIndex) || highlightIndex < 0 || highlightIndex >= labels.length)) {
+      throw new Error('highlightIndex requires a single bar series and a valid category index');
+    }
     const s = contentSlide({ eyebrow, title });
     const cw = takeaway ? 8.3 : W - 2 * MX;
     const ch = CONTENT_BOTTOM - CONTENT_TOP - (note ? 0.45 : 0);
     const palette = [T.primary, T.accent, '9AA5B1', T.dark, 'C7CDD4'];
+    const chartColors = highlightIndex === undefined ? palette.slice(0, Math.max(series.length, 1))
+      : labels.map((_, i) => i === highlightIndex ? T.primary : '9AA5B1');
     s.addChart(type === 'line' ? pres.charts.LINE : pres.charts.BAR, series.map((sr) => ({ name: sr.name, labels, values: sr.values })), {
-      x: MX, y: CONTENT_TOP, w: cw, h: ch, barDir: 'col', chartColors: palette.slice(0, Math.max(series.length, 1)),
+      x: MX, y: CONTENT_TOP, w: cw, h: ch, barDir: 'col', chartColors,
       showValue: type === 'bar', dataLabelPosition: 'outEnd', dataLabelFontSize: 10, dataLabelColor: T.ink,
       dataLabelFormatCode: numFmt, valAxisLabelFormatCode: numFmt,
       catAxisLabelColor: T.muted, valAxisLabelColor: T.muted, catAxisLabelFontFace: FONT_BODY, valAxisLabelFontFace: FONT_BODY,

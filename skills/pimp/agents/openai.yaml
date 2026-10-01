@@ -1,0 +1,4 @@
+interface:
+  display_name: "PIM-P for Codex"
+  short_description: "Evidence-grounded Korean paper review slides"
+  default_prompt: "Use $pimp to turn the supplied paper PDF into Korean seminar slides with source-linked speaker notes."

@@ -2,7 +2,7 @@
 """
 pdf_inventory.py — 논문 PDF를 리뷰 작업용으로 펼친다.
 
-usage: python3 pdf_inventory.py paper.pdf OUTDIR [--dpi 110]
+usage: python3 pdf_inventory.py paper.pdf OUTDIR [--dpi 110] [--ocr auto|on|off] [--ocr-lang eng+kor]
 
 OUTDIR/
   full.txt              페이지 구분자(===== PAGE N =====)가 들어간 전체 텍스트
@@ -10,18 +10,29 @@ OUTDIR/
   pages/page-NNN.png    페이지 이미지 (Figure·표·수식 확인용)
   inventory.json        메타데이터 + Figure/Table 캡션 목록과 추천 크롭 영역
 
+OCR is optional (off by default), uses an installed Tesseract, and never changes the
+source PDF or evidence page images. OCR text and column reading order require visual
+verification, especially for equations and tables. Detection is per-page so a scan
+inside an otherwise text-based paper is not missed.
+
 추천 크롭 영역(suggested_bbox)은 휴리스틱이다. 반드시 페이지 이미지를 보고 확인한 뒤
 crop_figure.py로 잘라낼 것. 좌표 단위는 PDF point (x0, top, x1, bottom), 원점은 좌상단.
 """
 import argparse
+import csv
+import io
 import json
+import math
 import os
 import re
+import shutil
+import statistics
+import subprocess
 import sys
 
 import pdfplumber
 
-CAPTION_RE = re.compile(r"^\s*(Figure|Fig\.|FIGURE|Table|TABLE|그림|표)\s*([A-Z]?\d+)\s*[:.|]", re.UNICODE)
+CAPTION_RE = re.compile(r"^\s*(Figure|Fig\.?|Table|그림|표)\s*([A-Z]?\d+)\s*(?:[:.|]|(?=\s))", re.UNICODE | re.IGNORECASE)
 
 
 def group_lines(words, tol=3):
@@ -41,8 +52,77 @@ def group_lines(words, tol=3):
     return lines
 
 
+def detect_column_split(words, page_w):
+    """Look for a repeated wide central gutter, not merely short left text.
+
+    This deliberately remains a heuristic: tables can resemble columns, so the
+    output inventory labels inferred reading order and requires page review.
+    """
+    candidates = []
+    for line in group_lines(words):
+        row = line["words"]
+        for left, right in zip(row, row[1:]):
+            gap = right["x0"] - left["x1"]
+            mid = (right["x0"] + left["x1"]) / 2
+            if gap >= max(24, page_w * 0.045) and page_w * 0.35 <= mid <= page_w * 0.65:
+                left_words = [w for w in row if w["x1"] <= left["x1"] + 1]
+                right_words = [w for w in row if w["x0"] >= right["x0"] - 1]
+                if len(left_words) >= 2 and len(right_words) >= 2:
+                    candidates.append((left["x1"], right["x0"]))
+    if len(candidates) < 3:
+        return None
+    # The shared gutter must exist across several rows; a single wide tab is insufficient.
+    mid = statistics.median((a + b) / 2 for a, b in candidates)
+    agreeing = [(a, b) for a, b in candidates if a <= mid <= b]
+    if len(agreeing) < 3 or len(agreeing) < len(candidates) * 0.6:
+        return None
+    return mid
+
+
+def reading_lines(words, page_w):
+    """Split same-height left/right rows, then read columns between spanning rows."""
+    raw = group_lines(words)
+    split = detect_column_split(words, page_w)
+    if split is None:
+        for line in raw:
+            line["column"] = "full"
+            line["column_bounds"] = (0, page_w)
+        return raw, None
+    separated = []
+    for line in raw:
+        left = [w for w in line["words"] if w["x1"] <= split]
+        right = [w for w in line["words"] if w["x0"] >= split]
+        crossing = len(left) + len(right) != len(line["words"])
+        tight = bool(left and right and min(w["x0"] for w in right) - max(w["x1"] for w in left) < 24)
+        if crossing or tight:
+            line.update({"column": "full", "column_bounds": (0, page_w)})
+            separated.append(line)
+        else:
+            for name, subset, bounds in (("left", left, (0, split)), ("right", right, (split, page_w))):
+                if subset:
+                    part = group_lines(subset)[0]
+                    part.update({"column": name, "column_bounds": bounds})
+                    separated.append(part)
+    ordered, band = [], []
+
+    def flush_band():
+        ordered.extend(sorted(band, key=lambda line: (line["column"] != "left", line["top"], line["x0"])))
+        band.clear()
+
+    for line in sorted(separated, key=lambda line: (line["top"], line["x0"])):
+        if line["column"] == "full":
+            flush_band()
+            ordered.append(line)
+        else:
+            band.append(line)
+    flush_band()
+    return ordered, split
+
+
 def column_range(line, page_w):
     """캡션이 속한 단(column) 범위 추정: 2단 논문이면 반쪽, 아니면 전체."""
+    if "column_bounds" in line:
+        return line["column_bounds"]
     mid = page_w / 2
     if line["x1"] <= mid + 10:
         return 0, mid
@@ -171,77 +251,201 @@ def _suggest_core(page, cap_line, kind, lines, cx0, cx1):
     return None
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def find_captions(page, lines, page_no, text_source="native"):
+    captions = []
+    for idx, line in enumerate(lines):
+        match = CAPTION_RE.match(line["text"])
+        if not match:
+            continue
+        kind = "table" if match.group(1).lower().startswith(("tab", "표")) else "figure"
+        parts, prev = [line], line
+        line_h = max(4.0, line["bottom"] - line["top"])
+        for nxt in lines[idx + 1: idx + 4]:
+            gap = nxt["top"] - prev["bottom"]
+            same_column = nxt.get("column") == line.get("column")
+            # A negative jump means reading moved to another column or region.
+            if not same_column or gap < -2 or gap > 0.8 * line_h or CAPTION_RE.match(nxt["text"]):
+                break
+            parts.append(nxt)
+            prev = nxt
+        captions.append({
+            "id": f"{'Table' if kind == 'table' else 'Fig'} {match.group(2)}",
+            "kind": kind, "page": page_no, "text_source": text_source,
+            "caption": " ".join(part["text"] for part in parts)[:300],
+            "caption_bbox": [round(min(part["x0"] for part in parts), 1), round(line["top"], 1),
+                             round(max(part["x1"] for part in parts), 1), round(prev["bottom"], 1)],
+            "suggested_bbox": suggest_bbox(page, line, kind, lines) if text_source == "native" else None,
+            "detection": "heuristic", "review_required": True,
+        })
+    return captions
+
+
+def image_coverage(page):
+    area = sum(max(0, min(page.width, obj["x1"]) - max(0, obj["x0"])) *
+               max(0, min(page.height, obj["bottom"]) - max(0, obj["top"])) for obj in page.images)
+    return min(1.0, area / (page.width * page.height))
+
+
+def tesseract_check(lang):
+    requested = os.environ.get("PIMP_TESSERACT", "tesseract")
+    executable = shutil.which(requested)
+    if not executable:
+        raise RuntimeError(f"OCR requires an executable Tesseract (selected: {requested!r}). "
+                           "Install tesseract and the requested language data or set PIMP_TESSERACT "
+                           "to its executable path, then rerun with --ocr auto/on; "
+                           "use --ocr off only for a manual review")
+    try:
+        proc = subprocess.run([executable, "--list-langs"], capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError(f"cannot inspect Tesseract languages: {e}") from e
+    if proc.returncode:
+        raise RuntimeError(f"Tesseract --list-langs failed: {proc.stderr.strip() or proc.stdout.strip()}")
+    available = set(proc.stdout.splitlines()[1:])
+    missing = set(lang.split("+")) - available
+    if missing:
+        raise RuntimeError(f"Tesseract language data missing: {', '.join(sorted(missing))}. "
+                           f"Installed languages: {', '.join(sorted(available))}. Install the language data "
+                           "or select an installed language with --ocr-lang")
+    return executable
+
+
+def ocr_words(image_path, page, executable, lang, timeout=60):
+    """Keep OCR text as unverified evidence; map TSV pixels to original PDF points."""
+    from PIL import Image
+    proc = subprocess.run([executable, image_path, "stdout", "-l", lang, "tsv"],
+                          capture_output=True, text=True, timeout=timeout, check=False)
+    if proc.returncode:
+        raise RuntimeError(f"Tesseract exited {proc.returncode}: {proc.stderr.strip()}")
+    with Image.open(image_path) as image:
+        sx, sy = page.width / image.width, page.height / image.height
+    words, confidence = [], []
+    for row in csv.DictReader(io.StringIO(proc.stdout), delimiter="\t"):
+        if row.get("level") != "5" or not row.get("text", "").strip():
+            continue
+        try:
+            conf = float(row["conf"])
+            left, top, width, height = (float(row[key]) for key in ("left", "top", "width", "height"))
+        except (KeyError, ValueError) as e:
+            raise RuntimeError("Tesseract returned malformed TSV word coordinates") from e
+        if conf < 0:
+            continue
+        words.append({"text": row["text"].strip(), "x0": left * sx, "x1": (left + width) * sx,
+                      "top": top * sy, "bottom": (top + height) * sy})
+        confidence.append(conf)
+    if not words:
+        raise RuntimeError("Tesseract found no words. Inspect the evidence image; try higher --dpi or "
+                           "the correct --ocr-lang, and manually transcribe inaccessible equations")
+    return words, round(statistics.mean(confidence), 1)
+
+
+def build_inventory(pdf_path, outdir, dpi=110, ocr="off", ocr_lang="eng", ocr_timeout=60):
+    if ocr not in ("auto", "on", "off"):
+        raise ValueError("ocr must be auto, on, or off")
+    if not math.isfinite(dpi) or dpi <= 0 or ocr_timeout <= 0:
+        raise ValueError("dpi and ocr_timeout must be positive")
+    os.makedirs(os.path.join(outdir, "text"), exist_ok=True)
+    os.makedirs(os.path.join(outdir, "pages"), exist_ok=True)
+    inv = {"schema_version": 2, "pdf": os.path.abspath(pdf_path), "pages": [], "captions": [],
+           "ocr_mode": ocr, "ocr_lang": ocr_lang, "warnings": [], "errors": [],
+           "bbox_units": "PDF points; [x0, top, x1, bottom]; origin=top-left",
+           "caption_detection": "advisory heuristic; verify every caption and crop visually"}
+    full, total_chars, executable, ocr_setup_error = [], 0, None, None
+    with pdfplumber.open(pdf_path) as pdf:
+        inv["num_pages"] = len(pdf.pages)
+        inv["metadata"] = {k: str(v) for k, v in (pdf.metadata or {}).items()
+                           if k in ("Title", "Author", "Subject", "CreationDate")}
+        for page_no, page in enumerate(pdf.pages, 1):
+            native_words = page.extract_words(keep_blank_chars=False, use_text_flow=False)
+            native_lines, split = reading_lines(native_words, page.width)
+            native_txt = "\n".join(line["text"] for line in native_lines)
+            native_chars = len(native_txt.strip())
+            coverage = image_coverage(page)
+            likely_scanned = native_chars < 40 and coverage >= 0.5
+            png = os.path.join(outdir, "pages", f"page-{page_no:03d}.png")
+            # Save the original page rendering before OCR; never overwrite it with OCR overlays.
+            page.to_image(resolution=dpi).save(png)
+            entry = {"page": page_no, "width_pt": round(page.width, 1), "height_pt": round(page.height, 1),
+                     "image": png, "native_chars": native_chars, "likely_scanned": likely_scanned,
+                     "text_sparse": native_chars < 40, "image_coverage": round(coverage, 3),
+                     "ocr": {"status": "not_requested", "lang": ocr_lang}}
+            txt, lines, source = native_txt, native_lines, "native" if native_chars else "none"
+            should_ocr = ocr == "on" or (ocr == "auto" and likely_scanned)
+            if should_ocr:
+                if executable is None and ocr_setup_error is None:
+                    try:
+                        executable = tesseract_check(ocr_lang)
+                    except RuntimeError as e:
+                        ocr_setup_error = str(e)
+                try:
+                    if ocr_setup_error:
+                        raise RuntimeError(ocr_setup_error)
+                    words, confidence = ocr_words(png, page, executable, ocr_lang, timeout=ocr_timeout)
+                    lines, split = reading_lines(words, page.width)
+                    txt, source = "\n".join(line["text"] for line in lines), "ocr"
+                    entry["ocr"].update({"status": "success", "mean_confidence": confidence,
+                                           "review_required": True})
+                    with open(os.path.join(outdir, "text", f"page_{page_no:03d}.native.txt"), "w", encoding="utf-8") as f:
+                        f.write(native_txt)
+                    inv["warnings"].append(f"p.{page_no}: OCR text is unverified; check symbols/numbers against the original page image")
+                except (OSError, RuntimeError, subprocess.TimeoutExpired) as e:
+                    message = f"p.{page_no}: OCR failed: {e}"
+                    entry["ocr"].update({"status": "failed", "error": str(e)})
+                    inv["errors"].append(message)
+            elif likely_scanned:
+                inv["warnings"].append(f"p.{page_no}: likely scanned; rerun with --ocr auto --ocr-lang {ocr_lang} or review/transcribe the page manually")
+            entry.update({"chars": len(txt.strip()), "text_source": source,
+                          "reading_order": "two-column heuristic" if split is not None else "top-to-bottom",
+                          "column_split_pt": round(split, 1) if split is not None else None})
+            total_chars += len(txt.strip())
+            with open(os.path.join(outdir, "text", f"page_{page_no:03d}.txt"), "w", encoding="utf-8") as f:
+                f.write(txt)
+            full.append(f"\n===== PAGE {page_no} =====\n{txt}")
+            inv["pages"].append(entry)
+            inv["captions"].extend(find_captions(page, lines, page_no, source))
+    # Preserve duplicate IDs on different pages: main-paper and appendix labels can collide.
+    seen, dedup = {}, []
+    for caption in inv["captions"]:
+        key = (caption["id"], caption["page"])
+        if key not in seen:
+            seen[key] = len(dedup)
+            dedup.append(caption)
+        elif dedup[seen[key]]["suggested_bbox"] is None and caption["suggested_bbox"] is not None:
+            dedup[seen[key]] = caption
+    inv["captions"] = dedup
+    inv["scanned_pages"] = [entry["page"] for entry in inv["pages"] if entry["likely_scanned"]]
+    inv["likely_scanned"] = bool(inv["scanned_pages"])
+    inv["text_chars"] = total_chars
+    inv["complete"] = not inv["errors"]
+    with open(os.path.join(outdir, "full.txt"), "w", encoding="utf-8") as f:
+        f.write("".join(full))
+    with open(os.path.join(outdir, "inventory.json"), "w", encoding="utf-8") as f:
+        json.dump(inv, f, ensure_ascii=False, indent=2)
+    return inv
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pdf")
     ap.add_argument("outdir")
     ap.add_argument("--dpi", type=int, default=110)
-    a = ap.parse_args()
-
-    os.makedirs(os.path.join(a.outdir, "text"), exist_ok=True)
-    os.makedirs(os.path.join(a.outdir, "pages"), exist_ok=True)
-
-    inv = {"pdf": os.path.abspath(a.pdf), "pages": [], "captions": []}
-    full = []
-    total_chars = 0
-    with pdfplumber.open(a.pdf) as pdf:
-        inv["num_pages"] = len(pdf.pages)
-        inv["metadata"] = {k: str(v) for k, v in (pdf.metadata or {}).items() if k in ("Title", "Author", "Subject", "CreationDate")}
-        for i, page in enumerate(pdf.pages, start=1):
-            txt = page.extract_text(layout=False) or ""
-            total_chars += len(txt.strip())
-            with open(os.path.join(a.outdir, "text", f"page_{i:03d}.txt"), "w") as f:
-                f.write(txt)
-            full.append(f"\n===== PAGE {i} =====\n{txt}")
-            png = os.path.join(a.outdir, "pages", f"page-{i:03d}.png")
-            page.to_image(resolution=a.dpi).save(png)
-            inv["pages"].append({"page": i, "width_pt": round(page.width, 1), "height_pt": round(page.height, 1),
-                                 "chars": len(txt.strip()), "image": png})
-
-            words = page.extract_words(keep_blank_chars=False, use_text_flow=False)
-            lines = group_lines(words)
-            for idx, L in enumerate(lines):
-                m = CAPTION_RE.match(L["text"])
-                if not m:
-                    continue
-                # 본문 속 참조("as shown in Figure 3.")를 거르기: 캡션은 줄 맨 앞에서 시작
-                kind = "table" if m.group(1).lower().startswith(("tab", "표")) else "figure"
-                cap, prev = L["text"], L
-                line_h = max(4.0, L["bottom"] - L["top"])
-                for nxt in lines[idx + 1: idx + 4]:  # 캡션 이어지는 줄 최대 3줄 (촘촘히 붙은 줄만)
-                    if nxt["top"] - prev["bottom"] > 0.8 * line_h or CAPTION_RE.match(nxt["text"]):
-                        break
-                    cap += " " + nxt["text"]
-                    prev = nxt
-                inv["captions"].append({
-                    "id": f"{'Table' if kind == 'table' else 'Fig'} {m.group(2)}",
-                    "kind": kind, "page": i,
-                    "caption": cap[:300],
-                    "caption_bbox": [round(L["x0"], 1), round(L["top"], 1), round(L["x1"], 1), round(L["bottom"], 1)],
-                    "suggested_bbox": suggest_bbox(page, L, kind, lines),
-                })
-
-    # 같은 ID가 여러 번 잡히면(본문 참조 오탐) 추천 영역이 있는 첫 번째를 우선
-    seen, dedup = {}, []
-    for c in inv["captions"]:
-        k = c["id"]
-        if k not in seen:
-            seen[k] = len(dedup); dedup.append(c)
-        elif dedup[seen[k]]["suggested_bbox"] is None and c["suggested_bbox"] is not None:
-            dedup[seen[k]] = c
-    inv["captions"] = dedup
-    inv["likely_scanned"] = total_chars < 200 * max(1, inv["num_pages"]) * 0.2
-
-    with open(os.path.join(a.outdir, "full.txt"), "w") as f:
-        f.write("".join(full))
-    with open(os.path.join(a.outdir, "inventory.json"), "w") as f:
-        json.dump(inv, f, ensure_ascii=False, indent=2)
-
-    print(f"pages: {inv['num_pages']}  text chars: {total_chars}  scanned?: {inv['likely_scanned']}")
-    print(f"captions found: {len(inv['captions'])}")
-    for c in inv["captions"]:
-        print(f"  {c['id']:<10} p.{c['page']:<3} bbox={c['suggested_bbox']}  {c['caption'][:70]}")
+    ap.add_argument("--ocr", choices=("auto", "on", "off"), default="off")
+    ap.add_argument("--ocr-lang", default="eng", help="installed Tesseract language(s), for example eng+kor")
+    ap.add_argument("--ocr-timeout", type=int, default=60, help="maximum OCR seconds per page")
+    a = ap.parse_args(argv)
+    try:
+        inv = build_inventory(a.pdf, a.outdir, a.dpi, a.ocr, a.ocr_lang, a.ocr_timeout)
+    except (OSError, ValueError) as e:
+        ap.error(str(e))
+    print(f"pages: {inv['num_pages']}  text chars: {inv['text_chars']}  scanned pages: {inv['scanned_pages']}")
+    print(f"captions found: {len(inv['captions'])}; advisory candidates require visual review")
+    for caption in inv["captions"]:
+        print(f"  {caption['id']:<10} p.{caption['page']:<3} bbox={caption['suggested_bbox']}  {caption['caption'][:70]}")
+    for message in inv["warnings"]:
+        print(f"WARNING: {message}", file=sys.stderr)
+    for message in inv["errors"]:
+        print(f"ERROR: {message}", file=sys.stderr)
     print(f"-> {a.outdir}/inventory.json, full.txt, text/, pages/")
+    return 2 if inv["errors"] else 0
 
 
 if __name__ == "__main__":
