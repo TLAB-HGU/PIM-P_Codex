@@ -19,7 +19,7 @@ PYTHON_MODULES = (
     ("pypdf", "pypdf", True, "PDF page metadata and validation"),
     ("PIL", "Pillow", True, "Figure crops and image inspection"),
     ("matplotlib", "matplotlib", True, "Equation rendering"),
-    ("yaml", "PyYAML", True, "Slide plan input"),
+    ("yaml", "PyYAML", True, "Skill metadata validation"),
     ("reportlab", "reportlab", False, "Synthetic PDF fixtures for development tests"),
 )
 

@@ -20,7 +20,9 @@ Windows에서는 `.venv\Scripts\python.exe`를 사용한다.
 
 Codex 앱 번들 실행 파일은 `load_workspace_dependencies`가 반환한 경로를 사용한다.
 필요하면 그 반환값으로 PIMP_NODE·PIMP_SOFFICE·PIMP_PDFTOPPM을 설정한다.
-개인 PC 경로를 스킬 코드에 저장하지 않는다. `doctor.py --json`은 필수/선택 항목을 구분한다.
+개인 PC 경로를 스킬 코드에 저장하지 않는다. 개발 링크 설치에서는 실제 스킬 경로를 해석해
+저장소의 `.venv/bin/python`(Windows는 `.venv\Scripts\python.exe`)이 있으면 우선 사용한다.
+복사 설치에서는 사용자 작업 폴더의 가상환경을 사용할 수 있다. `doctor.py --json`은 필수/선택 항목을 구분한다.
 
 | 환경변수 | 목적 |
 |---|---|
@@ -38,7 +40,8 @@ macOS는 `brew install libreoffice poppler tesseract`, Linux는 해당 패키지
 
 ## OCR
 
-`pdf_inventory.py --ocr auto`는 텍스트가 부족한 페이지에만 OCR을 적용한다.
+`pdf_inventory.py --ocr auto`는 원문 텍스트가 40자 미만이고 raster 이미지가 페이지의 절반 이상을 차지하는 페이지에 OCR을 적용한다.
+스캔 여부가 의심되지만 이 기준에 잡히지 않으면 페이지 이미지를 확인하고 `--ocr on`을 사용할 수 있다.
 `--ocr on`은 모든 페이지, `--ocr off`는 사용하지 않는다. 기본 CLI는 off이며 스킬은 auto를 사용한다.
 OCR 결과는 검토용 텍스트이고 원문 숫자를 보장하지 않는다. 원본 페이지 이미지는 계속 보존한다.
 캡션·크롭 감지는 advisory이며 캡션이 안 잡혀도 원본 페이지를 직접 읽고 좌표를 정할 수 있다.

@@ -50,7 +50,7 @@ WORK_DIR/
 ## 0. PDF 인벤토리
 
 ```bash
-"$PYTHON" "$SKILL_DIR/scripts/pdf_inventory.py" "$PDF" "$WORK_DIR/inventory" --ocr auto --ocr-lang eng
+"$PYTHON" "$SKILL_DIR/scripts/pdf_inventory.py" "$PDF" "$WORK_DIR/inventory" --dpi 150 --ocr auto --ocr-lang eng
 ```
 
 영문 논문은 eng, 한글 논문은 설치된 kor+eng 언어팩을 사용한다. 스캔·혼합 PDF는 페이지별 상태를 확인한다.
