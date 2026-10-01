@@ -1,5 +1,3 @@
-> 이 브랜치는 개발·테스트·검증 기록을 보존합니다. 배포 및 설치는 [main](https://github.com/TLAB-HGU/PIM-P_Codex/tree/main)을 사용하세요.
-
 # PIM-P for Codex
 
 Generates paper review seminar slides from research papers.
@@ -24,7 +22,7 @@ python3 ~/.agents/skills/pimp/scripts/setup_runtime.py
 ```
 
 프로젝트 설치는 위 경로를 `.agents/skills/pimp/scripts/setup_runtime.py`로 바꾼다.
-Windows 명령, 저장소에서 한 번에 설치, 기존 설치 갱신은 [설치 안내](docs/installation.md)를 참고한다.
+Windows 명령, 저장소에서 한 번에 설치, 기존 설치 갱신은 [설치 안내](https://github.com/TLAB-HGU/PIM-P_Codex/blob/dev/docs/installation.md)를 참고한다.
 
 ### 사용법
 
@@ -38,6 +36,8 @@ Codex에서 논문 PDF를 첨부하고 “30분 발표자료 만들어줘”, �
 
 PPTX 미리보기에는 LibreOffice와 한글 폰트가 필요하다. 설치 명령은 외부 도구 안내를 제공하며, 한글 표시는 실제 렌더로 확인한다.
 
-[검증 기록](docs/validation.md) · [개발 방법](docs/installation.md#개발) · [변경 이력](CHANGELOG.md)
+개발·테스트·검증 자료는 `dev` 브랜치에 보관한다. `.github`은 자동 검증 설정이다.
 
-[TLAB-HGU/PIM-P](https://github.com/TLAB-HGU/PIM-P) 기반 · [MIT License](LICENSE) · [원본 출처](UPSTREAM.md)
+[검증 기록](https://github.com/TLAB-HGU/PIM-P_Codex/blob/dev/docs/validation.md) · [개발 방법](https://github.com/TLAB-HGU/PIM-P_Codex/blob/dev/docs/installation.md#개발) · [변경 이력](https://github.com/TLAB-HGU/PIM-P_Codex/blob/dev/CHANGELOG.md)
+
+[TLAB-HGU/PIM-P](https://github.com/TLAB-HGU/PIM-P) 기반 · [MIT License](LICENSE) · [원본 출처](skills/pimp/UPSTREAM.md)
