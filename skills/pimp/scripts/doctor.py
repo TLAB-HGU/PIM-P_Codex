@@ -20,6 +20,7 @@ PYTHON_MODULES = (
     ("PIL", "Pillow", True, "Figure crops and image inspection"),
     ("matplotlib", "matplotlib", True, "Equation rendering"),
     ("yaml", "PyYAML", True, "Skill metadata validation"),
+    ("fitz", "PyMuPDF", False, "PDF to slide preview images (alternative to pdftoppm)"),
     ("reportlab", "reportlab", False, "Synthetic PDF fixtures for development tests"),
 )
 
@@ -87,7 +88,7 @@ try {
         return [node_check, _entry("pptxgenjs", "node-package", True, False, "PPTX layout engine", error="Node dependency probe could not complete")]
 
 
-def _optional_tools() -> tuple[list[dict], list[str]]:
+def _optional_tools(pymupdf_available: bool = False) -> tuple[list[dict], list[str]]:
     checks = []
     warnings = []
     tools = (
@@ -117,8 +118,10 @@ def _optional_tools() -> tuple[list[dict], list[str]]:
                 warnings.append("Tesseract is present, but its language data could not be checked.")
         checks.append(check)
     found = {check["name"]: check["available"] for check in checks}
-    if not found["soffice"] or not found["pdftoppm"]:
-        warnings.append("Local PPTX preview rendering is unavailable: both soffice and pdftoppm are needed. Use an available presentation renderer or PowerPoint, and report visual verification accurately.")
+    if not found["soffice"]:
+        warnings.append("Local PPTX preview rendering needs soffice to convert PPTX to PDF. Configure LibreOffice or use an available presentation renderer, and report visual verification accurately.")
+    if not found["pdftoppm"] and not pymupdf_available:
+        warnings.append("Slide preview images need pdftoppm or PyMuPDF. Configure one PDF image renderer and report visual verification accurately.")
     if not found["tesseract"]:
         warnings.append("OCR is unavailable. Scanned PDFs need a configured OCR engine or a text version of the paper.")
     return checks, warnings
@@ -126,8 +129,10 @@ def _optional_tools() -> tuple[list[dict], list[str]]:
 
 def diagnose(skill_root: Path | None = None, node: str | None = None) -> dict:
     skill_root = (skill_root or Path(__file__).resolve().parents[1]).expanduser().resolve()
-    optional, warnings = _optional_tools()
-    checks = _python_checks() + _node_checks(skill_root, node) + optional
+    python_checks = _python_checks()
+    pymupdf_available = any(check["name"] == "PyMuPDF" and check["available"] for check in python_checks)
+    optional, warnings = _optional_tools(pymupdf_available)
+    checks = python_checks + _node_checks(skill_root, node) + optional
     missing_required = [check["name"] for check in checks if check["required"] and not check["available"]]
     return {
         "schema_version": 1,

@@ -3,30 +3,45 @@
 Python 3.10 이상, Node 20 이상을 사용한다. 별도 LLM API 키는 필요 없다.
 Codex가 논문을 분석하고 JSON을 작성하며 스크립트는 추출·이미지 처리·PPTX 제작을 수행한다.
 
-## 설치
+## 설치와 선택할 실행 파일
 
-저장소에서 실행하는 경우:
+`skills/pimp/` 폴더를 개인 또는 프로젝트 스킬 폴더로 복사한 뒤, 그 폴더에서 한 번 준비한다.
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r skills/pimp/requirements.txt
-npm ci --prefix skills/pimp --ignore-scripts
-.venv/bin/python skills/pimp/scripts/doctor.py --strict
+python3 scripts/setup_runtime.py
 ```
 
-Windows에서는 `.venv\Scripts\python.exe`를 사용한다.
-독립 설치한 스킬도 그 폴더의 requirements.txt와 package-lock.json을 사용한다.
-개발·테스트에는 requirements-dev.txt를 사용한다. requirements는 지원 범위이고 Node는 lockfile로 고정된다.
+어느 작업 폴더에서든 복사한 스킬의 `scripts/setup_runtime.py` 절대 경로로 실행할 수 있다.
+Windows는 `py -3 scripts/setup_runtime.py`를 사용한다. Python 3.10+, Node 20+와 npm이 먼저 필요하다.
+준비 명령은 스킬의 최종 경로에 `.venv`와 `node_modules`를 설치하고 doctor로 필수 항목을 검사한다.
+시스템 패키지·OS 도구를 설치하지 않는다. 패키지 캐시는 스킬의 `.cache` 안에 둔다.
+requirements는 Python 지원 범위이고 Node는 package-lock.json으로 고정된다.
 
-Codex 앱 번들 실행 파일은 `load_workspace_dependencies`가 반환한 경로를 사용한다.
-필요하면 그 반환값으로 PIMP_NODE·PIMP_SOFFICE·PIMP_PDFTOPPM을 설정한다.
-개인 PC 경로를 스킬 코드에 저장하지 않는다. 개발 링크 설치에서는 실제 스킬 경로를 해석해
-저장소의 `.venv/bin/python`(Windows는 `.venv\Scripts\python.exe`)이 있으면 우선 사용한다.
-복사 설치에서는 사용자 작업 폴더의 가상환경을 사용할 수 있다. `doctor.py --json`은 필수/선택 항목을 구분한다.
+실행 결과 `.pimp-runtime.json`에는 `python`, `node`, `skill_root`, `digest`, `doctor`가 기록된다.
+`PYTHON`은 `SKILL_DIR/.venv/bin/python`(Windows는 `.venv/Scripts/python.exe`), `NODE`는 기록된 Node를 우선한다.
+스킬 경로를 이동하거나 다른 환경의 실행 기록을 복사했다면 그것을 사용하지 않는다.
+소스만 새 위치로 복사하고 실행 환경을 다시 준비한다.
+다른 위치에서 가져온 `.venv`는 이동·백업 후 새로 생성한다. 생성된 환경과 기록은 Git에 포함하지 않는다.
+
+```bash
+python3 scripts/setup_runtime.py --check
+```
+
+`--check`는 패키지 설치나 네트워크 없이 현재 경로·의존성 파일 상태·doctor 결과를 확인한다.
+requirements나 lockfile이 달라졌다면 setup_runtime.py를 다시 실행한다.
+`--node`, `--npm`으로 다른 실행 파일을 지정할 수 있다. `--json`은 구조화된 결과,
+`--timeout`은 각 설치 단계의 제한 시간이다. 준비 실패를 성공으로 표시하지 않는다.
+
+Codex 앱 번들 실행 파일은 필요한 경우 `load_workspace_dependencies`가 반환한 경로를 사용한다.
+반환값으로 PIMP_NODE·PIMP_SOFFICE·PIMP_PDFTOPPM을 설정한다. npm을 제공하지 않는 번들 Node는
+준비 명령에 지정할 npm이 별도로 필요하다. 개인 PC 경로를 소스 코드에 저장하지 않는다.
+이미 프로젝트에서 의존성을 관리한다면 그 환경을 사용할 수 있고 doctor.py --strict로 확인한다.
+개발 링크의 저장소 `.venv`도 지원하지만 스킬 안에 준비된 가상환경이 우선이다.
 
 | 환경변수 | 목적 |
 |---|---|
 | PIMP_NODE | Node 실행 파일 |
+| PIMP_NPM | npm 실행 파일 또는 npm-cli.js |
 | PIMP_SOFFICE | LibreOffice/soffice 실행 파일 |
 | PIMP_PDFTOPPM | Poppler pdftoppm 실행 파일 |
 | PIMP_TESSERACT | Tesseract 실행 파일 |
@@ -34,7 +49,7 @@ Codex 앱 번들 실행 파일은 `load_workspace_dependencies`가 반환한 경
 | PIMP_RUNTIME_DIR | 번들 dependencies 루트, render_slides에서 선택적으로 탐색 |
 | NODE_PATH | 환경에 이미 설치된 Node 패키지 경로를 사용해야 할 경우 |
 
-LibreOffice와 Poppler는 미리보기에 필요하다. Tesseract는 스캔 페이지에 필요하다.
+LibreOffice와 한글 폰트는 미리보기에 필요하며, PNG는 Poppler 또는 PyMuPDF로 생성한다. Tesseract는 스캔 페이지에 필요하다.
 macOS는 `brew install libreoffice poppler tesseract`, Linux는 해당 패키지 관리자로 설치할 수 있다.
 한국어 OCR은 `tesseract --list-langs`에서 kor을 확인한다. 언어팩이 없으면 eng로 한국어를 처리했다고 주장하지 않는다.
 

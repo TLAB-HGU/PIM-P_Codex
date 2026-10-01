@@ -8,4 +8,7 @@ work/
 tmp/
 dist/
 .pytest_cache/
-
+.cache/
+.pimp-runtime*.json
+.pimp-install.json
+.pimp-skill-backups/

@@ -19,17 +19,21 @@ TLAB-HGU/PIM-P를 Codex용으로 이식했다. [UPSTREAM.md](UPSTREAM.md)와 [LI
 
 ## 실행 준비와 작업 폴더
 
-`SKILL_DIR`는 지금 읽은 SKILL.md의 실제 폴더다. `PYTHON`과 `NODE`는 사용 가능한 실행 파일이다.
-Codex 앱에서는 `load_workspace_dependencies`로 번들 경로를 확인한다. CLI에서는 프로젝트 가상환경과 설치된 Node를 사용한다.
+`SKILL_DIR`는 지금 읽은 SKILL.md의 실제 폴더다. 준비된 `SKILL_DIR/.venv/bin/python`(Windows는 `.venv/Scripts/python.exe`)을 `PYTHON`으로 우선 사용한다.
+`NODE`는 `.pimp-runtime.json`에 기록된 실행 파일을 확인해 사용한다. 기록이 없으면 현재 환경에서 해석한다.
+Codex 앱에서는 필요한 경우 `load_workspace_dependencies`로 번들 경로를 확인한다.
 현재 환경 경로를 결과 코드에 하드코딩하지 않는다. 외부 API 키나 Claude 설치는 필요 없다.
 
-먼저 [runtime.md](references/runtime.md)를 읽고 다음으로 의존성을 확인한다.
+먼저 [runtime.md](references/runtime.md)를 읽는다. `.pimp-runtime.json`이 있으면 사용 가능한 Python 3.10+로
+`scripts/setup_runtime.py --check --json`을 실행해 현재 설치 경로와 의존성 파일 상태를 확인한다.
+이 검사가 실패하면 준비 명령을 다시 실행한다. 기록이 없는 기존 프로젝트 환경은 다음으로 의존성을 확인한다.
 
 ```bash
 "$PYTHON" "$SKILL_DIR/scripts/doctor.py" --strict
 ```
 
-의존성이 없으면 runtime.md의 프로젝트 전용 가상환경과 `npm ci --prefix "$SKILL_DIR"` 절차를 따른다.
+의존성이 없거나 준비 기록이 오래됐으면 사용 가능한 Python 3.10+로 `scripts/setup_runtime.py`를 실행한다.
+이 명령이 스킬 안에 가상환경과 Node 패키지를 설치한다. 사용자 설치 폴더의 준비 절차는 runtime.md를 따른다.
 스킬에 설치된 pptxgenjs와 환경의 Node를 연결한다. 수식 실패·한글 표시 실패를 성공으로 숨기지 않는다.
 
 작업별 `WORK_DIR`를 사용자 작업 폴더 안에 만든다. 같은 논문을 수정할 때는 기존 작업을 이어가고, 다른 논문 파일을 덮어쓰지 않는다.

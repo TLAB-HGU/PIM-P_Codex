@@ -26,3 +26,7 @@ jobs:
       - run: python scripts/validate_skill.py
       - run: python -m unittest discover -s tests -v
       - run: node --test tests/test_build_deck.js
+      - name: Install a standalone skill and prepare its runtime
+        run: |
+          python scripts/install_skill.py --target-dir "$RUNNER_TEMP/pimp-install/skills" --setup
+          python "$RUNNER_TEMP/pimp-install/skills/pimp/scripts/setup_runtime.py" --check

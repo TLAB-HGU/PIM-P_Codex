@@ -1,5 +1,13 @@
 # Changes
 
+## 0.2.0 — 2026-10-02
+
+- Simplify the README around folder installation and normal/easy usage; move advanced setup and development details to docs.
+- Add a standalone runtime setup command that prepares skill-local Python and Node dependencies and verifies readiness.
+- Add copy-and-setup installation with prerequisite checks, backups outside skill discovery and rollback on preparation failure.
+- Detect stale or relocated runtime records and support offline environment checks.
+- Document current Codex skill locations, existing installations, Windows commands and separate preview requirements.
+
 ## 0.1.1 — 2026-10-02
 
 - Pin the transitive image-size dependency to patched 2.0.3 with an npm override and refreshed lockfile.
