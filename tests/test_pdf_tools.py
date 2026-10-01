@@ -234,6 +234,25 @@ class PDFToolsTests(unittest.TestCase):
         self.assertFalse(invalid.exists())
         self.assertEqual(list(self.root.glob(".equation-*.png")), [])
 
+    @unittest.skipUnless(importlib.util.find_spec("matplotlib"), "matplotlib not installed in this Python")
+    def test_mathtext_italic_overhang_has_transparent_margin(self):
+        # The original tight-bbox export cut off the final italic V in Attention
+        # even though it returned success. Inspect actual ink bounds, not layout
+        # estimates; every edge must retain transparent pixels at the final DPI.
+        formulas = [r"\mathrm{Attention}(Q,K,V)=\mathrm{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V",
+                    r"V", r"f", r"x^2V"]
+        for dpi in (150, 300):
+            for index, latex in enumerate(formulas):
+                with self.subTest(dpi=dpi, latex=latex), contextlib.redirect_stdout(io.StringIO()):
+                    output = self.root / f"overhang-{dpi}-{index}.png"
+                    render_equation.render(latex, output, dpi=dpi)
+                    with Image.open(output) as image:
+                        ink = image.getchannel("A").getbbox()
+                        self.assertIsNotNone(ink)
+                        margins = (ink[0], ink[1], image.width - ink[2], image.height - ink[3])
+                        self.assertTrue(all(value >= max(8, int(dpi * .05)) for value in margins), margins)
+                        self.assertEqual(len(set(margins)), 1, margins)
+
     @unittest.skipUnless(shutil.which("tesseract"), "Tesseract is optional")
     def test_real_tesseract_reads_synthetic_scan(self):
         try:

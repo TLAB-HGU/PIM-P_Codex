@@ -229,10 +229,8 @@ def check_deck(pptx: Path | str, manifest: Path | str | None = None, require_sou
                             error("invalid_source", "Source needs kind:paper|reviewer and a nonempty label", expected_index)
                             continue
                         page = source_entry.get("page")
-                        if source_entry["kind"] == "paper" and (type(page) is not int or page < 1):
-                            error("invalid_source_page", "Paper source page must be a positive 1-based integer", expected_index)
-                        if source_entry["kind"] == "reviewer" and page is not None and (type(page) is not int or page < 1):
-                            error("invalid_source_page", "Reviewer source page must be positive when provided", expected_index)
+                        if type(page) is not int or page < 1:
+                            error("invalid_source_page", "Paper and reviewer sources need a positive 1-based PDF page", expected_index)
                         if type(page) is int and paper_pages and page > paper_pages:
                             error("source_page_out_of_range", f"Source page {page} exceeds paper_pages={paper_pages}", expected_index)
                         if source_entry.get("file"):

@@ -97,6 +97,19 @@ class DeckQATests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("source_page_out_of_range", {error["code"] for error in result["errors"]})
 
+    def test_reviewer_interpretation_still_requires_a_real_paper_page(self):
+        fixture(self.pptx)
+        manifest = self.directory / "manifest.json"
+        entry = {"index": 1, "title": "한계 해석", "archetype": "critiqueSlide", "section": "Critique", "notes": "발표 설명", "sources": [{"kind": "reviewer", "label": "Discussion, reviewer interpretation"}]}
+        data = {"version": 1, "mode": "normal", "paper_pages": 3, "slides": [entry]}
+        manifest.write_text(json.dumps(data), encoding="utf-8")
+        result = qa.check_deck(self.pptx, manifest, require_sources=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("invalid_source_page", {error["code"] for error in result["errors"]})
+        entry["sources"][0]["page"] = 3
+        manifest.write_text(json.dumps(data), encoding="utf-8")
+        self.assertTrue(qa.check_deck(self.pptx, manifest, require_sources=True)["ok"])
+
     def test_outside_content_requests_visual_review(self):
         fixture(self.pptx, outside=True)
         result = qa.check_deck(self.pptx)

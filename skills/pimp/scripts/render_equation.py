@@ -49,6 +49,8 @@ def render(latex, out, color="1F2933", fontsize=30, dpi=300):
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+        from matplotlib.transforms import IdentityTransform
+        from PIL import Image
     except ImportError as e:
         raise RuntimeError("matplotlib is unavailable; run the repository bootstrap with the selected Python, "
                            "or provide pdf/page/bbox to crop the original equation") from e
@@ -60,9 +62,35 @@ def render(latex, out, color="1F2933", fontsize=30, dpi=300):
         temp_path = tmp.name
     fig = None
     try:
-        fig = plt.figure(figsize=(0.01, 0.01))
-        fig.text(0, 0, f"${latex}$", fontsize=fontsize, color=f"#{color}")
-        fig.savefig(temp_path, dpi=dpi, transparent=True, bbox_inches="tight", pad_inches=0.05)
+        # Mathtext's layout advance can understate italic glyph overhang. Measuring
+        # with bbox_inches='tight' can therefore clip a final V while still saving
+        # successfully. Render at the final DPI with generous canvas space, then
+        # crop the actual alpha pixels rather than the text layout rectangle.
+        fig = plt.figure(figsize=(1, 1), dpi=dpi)
+        fig.patch.set_alpha(0)
+        artist = fig.text(0, 0, f"${latex}$", fontsize=fontsize, color=f"#{color}",
+                          transform=IdentityTransform(), ha="left", va="baseline")
+        fig.canvas.draw()  # also validates the supplied notation before writing
+        bounds = artist.get_window_extent(fig.canvas.get_renderer())
+        pad_px = max(8, math.ceil(dpi * 0.05))
+        margin = max(pad_px * 2, math.ceil(fontsize * dpi / 72 * 2))
+        for attempt in range(4):
+            width = math.ceil(bounds.width + margin * 2)
+            height = math.ceil(bounds.height + margin * 2)
+            fig.set_size_inches(width / dpi, height / dpi)
+            artist.set_position((margin - bounds.x0, margin - bounds.y0))
+            fig.canvas.draw()
+            image = Image.frombytes("RGBA", fig.canvas.get_width_height(), fig.canvas.buffer_rgba().tobytes())
+            ink = image.getchannel("A").getbbox()
+            if ink is None:
+                raise ValueError("equation rendered no visible pixels")
+            if min(ink[0], ink[1], image.width - ink[2], image.height - ink[3]) >= pad_px:
+                image = image.crop((ink[0] - pad_px, ink[1] - pad_px, ink[2] + pad_px, ink[3] + pad_px))
+                image.save(temp_path)
+                break
+            margin *= 2  # verify no glyph touches the canvas before cropping
+        else:
+            raise RuntimeError("cannot obtain unclipped equation bounds; provide pdf/page/bbox for an exact crop")
         os.replace(temp_path, out)
     finally:
         if fig is not None:
