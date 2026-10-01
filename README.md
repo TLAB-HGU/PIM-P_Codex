@@ -1,3 +1,5 @@
+> 이 브랜치는 개발·테스트·검증 기록을 보존합니다. 배포 및 설치는 [main](https://github.com/TLAB-HGU/PIM-P_Codex/tree/main)을 사용하세요.
+
 # PIM-P for Codex
 
 Generates paper review seminar slides from research papers.

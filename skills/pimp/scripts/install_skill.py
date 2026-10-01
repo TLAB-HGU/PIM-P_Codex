@@ -170,7 +170,7 @@ def install_skill(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parents[1] / "skills" / "pimp", help="Skill folder (default: repository skills/pimp)")
+    parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parents[1], help="Skill folder (default: the skill containing this installer)")
     parser.add_argument("--target-dir", type=Path, default=default_target_dir(), help="Parent skills directory; the skill folder is created inside it")
     parser.add_argument("--link", action="store_true", help="Symlink to the source so local edits become available immediately")
     parser.add_argument("--replace", action="store_true", help="Replace an existing destination after backing it up outside the skills directory")

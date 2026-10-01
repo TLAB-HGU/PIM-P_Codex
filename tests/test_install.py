@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_skill.py"
+INSTALL_SCRIPT = REPO_ROOT / "skills" / "pimp" / "scripts" / "install_skill.py"
 spec = importlib.util.spec_from_file_location("pimp_installer", INSTALL_SCRIPT)
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
@@ -66,6 +66,13 @@ class InstallSkillTests(unittest.TestCase):
     def test_dry_run_does_not_create_parent_directory(self):
         result = installer.install_skill(self.source, self.target, dry_run=True)
         self.assertTrue(result["dry_run"])
+        self.assertFalse(self.target.exists())
+
+    def test_cli_default_source_is_the_containing_skill(self):
+        result = subprocess.run([sys.executable, str(INSTALL_SCRIPT), "--target-dir", str(self.target), "--dry-run", "--json"], capture_output=True, text=True, check=True)
+        report = json.loads(result.stdout)
+        self.assertEqual(Path(report["source"]), REPO_ROOT / "skills" / "pimp")
+        self.assertEqual(Path(report["destination"]), (self.target / "pimp").resolve())
         self.assertFalse(self.target.exists())
 
     def test_existing_unrelated_installation_is_refused(self):

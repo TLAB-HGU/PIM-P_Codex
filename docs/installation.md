@@ -39,13 +39,13 @@ py -3 "$env:USERPROFILE\.agents\skills\pimp\scripts\setup_runtime.py"
 ```bash
 git clone https://github.com/TLAB-HGU/PIM-P_Codex.git
 cd PIM-P_Codex
-python3 scripts/install_skill.py --target-dir ~/.agents/skills --setup
+python3 skills/pimp/scripts/install_skill.py --target-dir ~/.agents/skills --setup
 ```
 
 Windows PowerShell:
 
 ```powershell
-py -3 scripts/install_skill.py --target-dir "$env:USERPROFILE\.agents\skills" --setup
+py -3 skills/pimp/scripts/install_skill.py --target-dir "$env:USERPROFILE\.agents\skills" --setup
 ```
 
 프로젝트에 설치하려면 `--target-dir /path/to/project/.agents/skills`로 지정한다.
@@ -68,7 +68,7 @@ python3 ~/.codex/skills/pimp/scripts/setup_runtime.py
 ```
 
 복사 설치 갱신은 저장소를 `git pull`한 뒤 처음 설치한 `--target-dir`에
-`scripts/install_skill.py --replace --setup`을 실행한다. 직접 소스를 복사했다면 생성된 실행 환경을
+`skills/pimp/scripts/install_skill.py --replace --setup`을 실행한다. 직접 소스를 복사했다면 생성된 실행 환경을
 함께 이동하지 말고 소스만 갱신한 뒤 setup_runtime.py를 다시 실행한다.
 
 설치 폴더를 이동했다면 새 위치에서 다시 준비한다. 다른 위치의 가상환경이나 성공 기록은 사용하지 않는다.
@@ -88,7 +88,10 @@ Codex 앱의 번들 도구도 사용할 수 있다. 자세한 설정은 [실행 
 
 ## 개발
 
-개발 폴더를 스킬로 연결하려면 `scripts/install_skill.py --link --target-dir ...`를 사용하고
+자동 테스트와 개발 의존성은 `dev` 브랜치에 있다. 아래 개발 명령은 `git switch dev` 후 실행한다.
+배포용 `main`의 구조와 검증 도구의 고정 커밋 사용법은 [개발·배포 구조](development.md)를 참고한다.
+
+개발 폴더를 스킬로 연결하려면 `skills/pimp/scripts/install_skill.py --link --target-dir ...`를 사용하고
 `python3 skills/pimp/scripts/setup_runtime.py`로 원본 폴더의 실행 환경을 준비한다.
 링크 설치에는 `--setup`을 결합하지 않는다. 원본 폴더의 실행 환경 변경은 링크 교체만으로 되돌릴 수 없기 때문이다.
 

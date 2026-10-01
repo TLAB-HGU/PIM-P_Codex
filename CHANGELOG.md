@@ -1,5 +1,13 @@
 # Changes
 
+## 0.2.1 — 2026-10-02
+
+- Keep the main distribution focused on the skill, README, license and CI configuration.
+- Preserve development tools, automated tests and validation records on the dev branch.
+- Move the installer into skills/pimp/scripts so the copied package remains self-contained.
+- Validate main with tools from a pinned dev commit without replacing the main skill under test.
+- Remove the duplicate project discovery link and root attribution; retain the skill's original MIT notice and upstream attribution.
+
 ## 0.2.0 — 2026-10-02
 
 - Simplify the README around folder installation and normal/easy usage; move advanced setup and development details to docs.
