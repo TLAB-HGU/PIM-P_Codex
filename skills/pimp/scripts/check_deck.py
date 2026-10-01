@@ -12,6 +12,7 @@ from pathlib import Path
 import posixpath
 import re
 import sys
+import unicodedata
 from urllib.parse import unquote
 import xml.etree.ElementTree as ET
 import zipfile
@@ -29,6 +30,10 @@ NONCONTENT = {"titleSlide", "agendaSlide", "sectionSlide", "thankYouSlide", "ref
 
 def substantive(text: str) -> int:
     return sum(char.isalnum() for char in text)
+
+
+def normalized(text: str) -> str:
+    return "".join(unicodedata.normalize("NFC", text).split())
 
 
 def rels_path(part: str) -> str:
@@ -63,6 +68,7 @@ def check_deck(pptx: Path | str, manifest: Path | str | None = None, require_sou
         "scope": "Validates package structure, substantive speaker notes, placeholders and declared evidence. Source links do not prove claim accuracy. Render and review every slide.",
     }
     errors, warnings = report["errors"], report["warnings"]
+    package_notes = {}
 
     def error(code: str, message: str, slide: int | None = None) -> None:
         errors.append({"code": code, "message": message, **({"slide": slide} if slide else {})})
@@ -186,6 +192,7 @@ def check_deck(pptx: Path | str, manifest: Path | str | None = None, require_sou
                         overflow.append({"x": x, "y": y, "width": w, "height": h})
             if overflow:
                 warnings.append({"code": "out_of_bounds", "slide": index, "message": "Content crosses slide edges; inspect the rendered slide", "objects": overflow})
+            package_notes[index] = notes
             report["slides"].append({"index": index, "part": part, "notes_chars": substantive(notes), "text_chars": substantive(text)})
 
     if manifest is not None:
@@ -216,6 +223,8 @@ def check_deck(pptx: Path | str, manifest: Path | str | None = None, require_sou
                     for field in ("title", "archetype", "notes"):
                         if not isinstance(entry.get(field), str) or not entry[field].strip():
                             error("manifest_field", f"Manifest slide needs nonempty {field}", expected_index)
+                    if isinstance(entry.get("notes"), str) and normalized(entry["notes"]) != normalized(package_notes.get(expected_index, "")):
+                        error("manifest_notes_mismatch", "Manifest speaker notes differ from the actual PPTX notes; rebuild or supply the matching manifest", expected_index)
                     if not isinstance(entry.get("section"), str):
                         error("manifest_field", "Manifest slide section must be a string", expected_index)
                     sources = entry.get("sources", [])
@@ -233,6 +242,11 @@ def check_deck(pptx: Path | str, manifest: Path | str | None = None, require_sou
                             error("invalid_source_page", "Paper and reviewer sources need a positive 1-based PDF page", expected_index)
                         if type(page) is int and paper_pages and page > paper_pages:
                             error("source_page_out_of_range", f"Source page {page} exceeds paper_pages={paper_pages}", expected_index)
+                        if type(page) is int and page >= 1:
+                            kind = "리뷰어 관점" if source_entry["kind"] == "reviewer" else "논문"
+                            citation = f"[{kind}] {source_entry['label']} (PDF p.{page})"
+                            if normalized(citation) not in normalized(package_notes.get(expected_index, "")):
+                                error("source_notes_mismatch", "Declared source citation is absent from the actual PPTX notes", expected_index)
                         if source_entry.get("file"):
                             asset = Path(source_entry["file"])
                             if not asset.is_absolute():

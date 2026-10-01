@@ -20,9 +20,10 @@ REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+NOTES = "논문의 핵심 문제와 실험 조건을 설명하고 결과를 원문과 대조합니다.\n\n출처:\n[논문] Table 1 (PDF p.2)"
 
 
-def fixture(path, notes=True, placeholder=False, broken_target=False, outside=False, substantive_notes=True):
+def fixture(path, notes=True, placeholder=False, broken_target=False, outside=False, substantive_notes=True, note_override=None):
     """A package containing slide-number boilerplate plus genuine notes."""
     visible = "TODO" if placeholder else "한글 논문 리뷰"
     shape = f'<p:sp><p:nvSpPr><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="{15000000 if outside else 0}" y="0"/><a:ext cx="1000000" cy="1000000"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>{visible}</a:t></a:r></a:p></p:txBody></p:sp>'
@@ -36,7 +37,7 @@ def fixture(path, notes=True, placeholder=False, broken_target=False, outside=Fa
     if notes:
         target = "../notesSlides/missing.xml" if broken_target else "../notesSlides/notesSlide1.xml"
         parts["ppt/slides/_rels/slide1.xml.rels"] = f'<Relationships xmlns="{REL}"><Relationship Id="rId1" Type="{R}/notesSlide" Target="{target}"/></Relationships>'
-        actual_notes = "논문의 핵심 문제와 실험 조건을 설명하고 결과를 원문과 대조합니다." if substantive_notes else ""
+        actual_notes = (NOTES if note_override is None else note_override) if substantive_notes else ""
         parts["ppt/notesSlides/notesSlide1.xml"] = f'<p:notes xmlns:p="{P}" xmlns:a="{A}"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:nvPr><p:ph type="sldNum"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>1</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:nvPr><p:ph type="body"/></p:nvPr></p:nvSpPr><p:txBody><a:p><a:r><a:t>{actual_notes}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>'
     with zipfile.ZipFile(path, "w") as archive:
         for name, text in parts.items():
@@ -55,7 +56,7 @@ class DeckQATests(unittest.TestCase):
     def test_valid_korean_notes_and_evidence(self):
         fixture(self.pptx)
         manifest = self.directory / "deck_manifest.json"
-        manifest.write_text(json.dumps({"version": 1, "mode": "normal", "slides": [{"index": 1, "title": "한글 논문 리뷰", "archetype": "resultSlide", "section": "Results", "notes": "충분한 발표자 설명", "sources": [{"page": 2, "kind": "paper", "label": "Table 1"}]}]}, ensure_ascii=False), encoding="utf-8")
+        manifest.write_text(json.dumps({"version": 1, "mode": "normal", "slides": [{"index": 1, "title": "한글 논문 리뷰", "archetype": "resultSlide", "section": "Results", "notes": NOTES, "sources": [{"page": 2, "kind": "paper", "label": "Table 1"}]}]}, ensure_ascii=False), encoding="utf-8")
         result = qa.check_deck(self.pptx, manifest, require_sources=True)
         self.assertTrue(result["ok"], result["errors"])
         self.assertEqual(result["slide_count"], 1)
@@ -107,8 +108,28 @@ class DeckQATests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("invalid_source_page", {error["code"] for error in result["errors"]})
         entry["sources"][0]["page"] = 3
+        entry["notes"] = "논문의 핵심 문제와 실험 조건을 설명하고 결과를 원문과 대조합니다.\n[리뷰어 관점] Discussion, reviewer interpretation (PDF p.3)"
+        fixture(self.pptx, note_override=entry["notes"])
         manifest.write_text(json.dumps(data), encoding="utf-8")
         self.assertTrue(qa.check_deck(self.pptx, manifest, require_sources=True)["ok"])
+
+    def test_manifest_from_another_deck_cannot_pass_with_matching_slide_count(self):
+        fixture(self.pptx)
+        manifest = self.directory / "manifest.json"
+        entry = {"index": 1, "title": "한글 논문 리뷰", "archetype": "pointsSlide", "section": "Method", "notes": "다른 논문에서 가져온 충분히 긴 발표자 노트이며 이 덱의 실제 내용과 일치하지 않습니다.", "sources": [{"page": 2, "kind": "paper", "label": "Table 1"}]}
+        manifest.write_text(json.dumps({"version": 1, "mode": "normal", "slides": [entry]}), encoding="utf-8")
+        result = qa.check_deck(self.pptx, manifest, require_sources=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("manifest_notes_mismatch", {error["code"] for error in result["errors"]})
+
+    def test_declared_source_must_be_embedded_in_the_actual_speaker_notes(self):
+        fixture(self.pptx)
+        manifest = self.directory / "manifest.json"
+        entry = {"index": 1, "title": "한글 논문 리뷰", "archetype": "pointsSlide", "section": "Method", "notes": NOTES, "sources": [{"page": 3, "kind": "paper", "label": "Table 1"}]}
+        manifest.write_text(json.dumps({"version": 1, "mode": "normal", "slides": [entry]}), encoding="utf-8")
+        result = qa.check_deck(self.pptx, manifest, require_sources=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("source_notes_mismatch", {error["code"] for error in result["errors"]})
 
     def test_outside_content_requests_visual_review(self):
         fixture(self.pptx, outside=True)

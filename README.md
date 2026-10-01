@@ -3,7 +3,7 @@
 논문 PDF 한 편을 **한국어 논문 리뷰 세미나 PPTX와 발표자 노트**로 만드는 Codex 스킬입니다.
 [TLAB-HGU/PIM-P](https://github.com/TLAB-HGU/PIM-P)를 기반으로 Codex의 로컬 실행 환경에 맞게 개발했습니다.
 
-개발 버전: **0.1.0**. normal(연구자)·easy(비전공자) 모드를 지원합니다.
+개발 버전: **0.1.1**. normal(연구자)·easy(비전공자) 모드를 지원합니다.
 Codex가 논문을 읽고 분석·슬라이드 내용을 작성하며, 동봉 스크립트가 PDF 추출과 PPTX 제작·검사를 수행합니다.
 별도 Claude 설치나 LLM API 키는 필요 없습니다.
 
@@ -90,6 +90,10 @@ Figure·수식은 원문 의미를 보존하는 이미지입니다.
 폰트는 macOS Apple SD Gothic Neo, Windows Malgun Gothic, Linux Noto Sans CJK KR가 기본입니다.
 렌더러는 시스템 한글 폰트에 접근하는 독립 설정을 만들며 사용자 전역 폰트 설정을 바꾸지 않습니다.
 다른 PC에서 PPTX를 열 때 폰트 대체로 줄바꿈이 달라질 수 있으므로 미리보기 PDF도 확인하세요.
+
+기존 설치를 갱신할 때는 `git pull` 후 `npm ci --prefix skills/pimp --ignore-scripts`를 다시 실행하세요.
+v0.1.1은 이미지 분석 의존성의 취약점 수정 버전을 lockfile로 고정합니다. 별도로 복사 설치했다면
+설치기를 `--replace`로 실행하고 그 스킬 폴더에서도 npm ci를 실행합니다.
 
 정확도 검사는 **구조 검사·PNG 확인·원문 대조**를 함께 수행합니다.
 자동 검사는 출처 선언과 파일 구조를 확인하며, 주장의 사실 여부를 자동으로 보장하지 않습니다.

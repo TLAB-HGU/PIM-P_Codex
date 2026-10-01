@@ -140,3 +140,20 @@ test('exported build also refuses to overwrite deck with manifest JSON', async t
 test('explicit fonts are preserved in the deck kit', () => {
   assert.deepEqual(createKit({fontHead:'Heading Font',fontBody:'Body Font'}).fonts,{head:'Heading Font',body:'Body Font'});
 });
+
+test('malformed ICNS image parsing terminates instead of blocking the process', () => {
+  const script = `
+    const {imageSize} = require('image-size');
+    const png = Buffer.from('${PIXEL.toString('base64')}', 'base64');
+    const size = imageSize(png);
+    if (size.width !== 1 || size.height !== 1) process.exit(2);
+    const malformed = Buffer.alloc(16);
+    malformed.write('icns', 0); malformed.writeUInt32BE(16, 4);
+    malformed.write('icp4', 8); malformed.writeUInt32BE(0, 12);
+    try { imageSize(malformed); process.exit(3); }
+    catch (error) { console.log('invalid image rejected'); }
+  `;
+  const result = spawnSync(process.execPath, ['-e', script], {cwd:skill, encoding:'utf8', timeout:3000});
+  assert.equal(result.status, 0, result.error?.message || result.stderr);
+  assert.match(result.stdout, /invalid image rejected/);
+});

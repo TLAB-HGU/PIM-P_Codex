@@ -41,6 +41,7 @@ deck.json은 Codex가 검증한 brief와 slide_plan에서 작성한다. JSON 빌
 - `kind: paper`는 저자의 내용, `kind: reviewer`는 해당 페이지를 근거로 한 리뷰어 해석이다. label에 Table/Figure/Eq/Section과 구분을 적는다.
 - 리뷰어 해석을 논문 주장인 것처럼 표시하지 않는다. 발표 화면에도 저자 언급/리뷰어 관점을 구분한다.
 - paper_pages를 넣으면 범위를 벗어난 페이지를 빌드에서 거부한다. manifest는 작성한 근거를 기록하지만 그 근거가 주장을 뒷받침하는지는 원문 대조가 필요하다.
+- manifest의 notes는 출처를 포함한 실제 PPTX 노트 전체다. QA는 실제 노트와의 일치와 sources의 출처 문구 포함 여부를 검사한다. 커스텀 빌드는 각 출처를 `[논문] label (PDF p.N)` 또는 `[리뷰어 관점] label (PDF p.N)`으로 추가한다.
 - 표지·목차·간지·참고문헌은 근거 배열이 비어 있어도 된다. titleSlide에 원문 제목·저자·연도가 있으면 PDF p.1을 연결하는 편이 좋다.
 - image와 eqImages 경로는 로컬 PNG/JPEG다. URL을 넘기지 않는다.
 

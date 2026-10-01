@@ -1,9 +1,10 @@
 {
   "name": "pim-p-codex-skill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Codex paper review seminar slide skill, adapted from TLAB-HGU/PIM-P",
   "license": "MIT",
   "engines": { "node": ">=20" },
-  "dependencies": { "pptxgenjs": "4.0.1" }
+  "dependencies": { "pptxgenjs": "4.0.1" },
+  "overrides": { "image-size": "2.0.3" }
 }
